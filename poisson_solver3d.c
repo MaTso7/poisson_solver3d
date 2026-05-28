@@ -1,19 +1,19 @@
-// Manuel Tsolakis, 2019
-
-// Solves the 3D Poisson equation for a given function f and Dirichlet boundary function g using Jacobi, Gauß-Seidel, SOR or CG
-// f and g are specified by mesh.func_f and mesh.func_g in main() (e.g., f_sink and g_source)
-// The result is written to file 'results' in binary, row-major form and can be read by, e.g., plot_poisson.m in MATLAB
-// Additional parameters need to be specified via command line (order not important):
-//
-// alg=string 			which algorithm to use: "jacobi", "gs", "sor" or "cg"
-// m=int 				the number of points along the first dimension
-// n=int 				the number of points along the second dimension
-// q=int 				the number of points along the third dimension
-// h=double 			step size along all three dimensions
-// threshold=double 	stopping criterion: J,GS,SOR: maximum local change from one iteration to the next, CG: length of residual vector
-// x=double 			starting value for first dimension (including the boundary)
-// y=double 			starting value for second dimension(including the boundary)
-// z=double 			starting value for third dimension (including the boundary)
+/*
+ * poisson_solver3d.c
+ *
+ * Parallel C/MPI solver for the 3D Poisson equation with Dirichlet
+ * boundary conditions. The domain is discretized on a uniform Cartesian
+ * grid and distributed across MPI processes using a 3D Cartesian topology.
+ *
+ * Implemented methods:
+ *   - Jacobi
+ *   - red-black Gauss-Seidel
+ *   - successive over-relaxation (SOR)
+ *   - conjugate gradient (CG)
+ *
+ * The default test problem is defined by f_sink() and g_source().
+ * The numerical solution is written to the binary file "results".
+ */
 
 #include <stdio.h>
 #include <string.h> //strcmp
@@ -94,6 +94,7 @@ enum Algorithm
 
 
 //forward declarations of functions
+void print_usage(const char *program_name);
 void read_input(MESH_T *mesh, enum Algorithm *alg, char **argv);
 
 void setup_grid(GRID_INFO_T *grid);
@@ -199,6 +200,14 @@ void setup_grid(GRID_INFO_T *grid)
 	return;
 }
 
+void print_usage(const char *program_name)
+{//print expected arguments
+    fprintf(stderr,
+        "Usage:\n"
+        "  mpirun -np <P> %s alg=<jacobi|gs|sor|cg> m=<int> n=<int> q=<int> "
+        "h=<double> threshold=<double> x=<double> y=<double> z=<double>\n",
+        program_name);
+}
 
 void read_input(MESH_T *mesh, enum Algorithm *alg, char **argv)
 {//read necessary values from command line arguments
@@ -656,7 +665,7 @@ void gauss_seidel(MESH_T *mesh, GRID_INFO_T *grid)
 
 
 	if((*grid).my_rank == 0)
-		printf("Starting Gauß-Seidel\nMaximal change after the ith iteration:\n");
+		printf("Starting Gauss-Seidel\nMaximal change after the ith iteration:\n");
 	double max_diff;
 	do
 	{
@@ -895,7 +904,7 @@ void gauss_seidel(MESH_T *mesh, GRID_INFO_T *grid)
 
 
 void gs_sor(MESH_T *mesh, GRID_INFO_T *grid)
-{//Gauß-Seidel with successive over-relaxation
+{//Gauss-Seidel with successive over-relaxation
 
 	//calculate the relaxation factor omega
 	double n_est = cbrt((*mesh).m * (*mesh).n * (*mesh).q);
@@ -1464,6 +1473,7 @@ int main(int argc, char **argv)
 	if(grid.g_rank == 0 && argc != 10)
 	{
 		fprintf(stderr, "Wrong number of arguments: argc=%d, needed are 10.\n", argc);
+		print_usage(argv[0]);
 		MPI_Abort(MPI_COMM_WORLD, 2);
 	}
 	MPI_Barrier(MPI_COMM_WORLD);
